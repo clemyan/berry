@@ -13,8 +13,6 @@
  */
 html, body {
   height: auto !important;
-
-  --ifm-code-padding-horizontal: 0.2rem;
 }
 
 body {
@@ -80,7 +78,10 @@ html {
 .navbar__logo {
   padding: 10px 0;
 
-  filter: invert(100%) invert(15%) sepia(39%) saturate(2287%) hue-rotate(222deg) brightness(92%) contrast(94%);
+  filter: none;
+}
+[data-theme='dark'] .navbar__logo {
+  filter: brightness(150%);
 }
 
 html:not([x-doc-route="/"]) footer {
@@ -88,7 +89,7 @@ html:not([x-doc-route="/"]) footer {
 }
 
 html.blog-wrapper .container {
-  background: white;
+  background: var(--ifm-background-color);
   border-radius: 10px;
 }
 
@@ -275,37 +276,40 @@ pre {
 /* You can override the default Infima variables here. */
 :root {
   --ifm-font-family-base: "PT Sans";
-  --ifm-color-primary:  #514C87;
+  --ifm-color-primary: #514C87;
   --ifm-color-primary-dark: #29285E;
   --ifm-color-primary-darker: #26265C;
   --ifm-color-primary-darkest: #1F2054;
   --ifm-color-primary-light: #7B73B2;
   --ifm-color-primary-lighter: #A69DDF;
   --ifm-color-primary-lightest: #D4C9FF;
+  --ifm-background-color: #FFFFFF;
+  --ifm-link-decoration-color: #e4e0fd;
   --ifm-menu-link-padding-vertical: 1rem;
   --ifm-menu-link-padding-horizontal: 1rem;
   --ifm-navbar-height: 60px;
   --ifm-navbar-padding-horizontal: 20px;
   --ifm-navbar-padding-vertical: 0;
-  --ifm-breadcrumb-item-background-active: #f5f5f5;
   --ifm-code-font-size: 95%;
+  --ifm-code-padding-horizontal: 0.2rem;
   --ifm-pre-line-height: 1.7;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 
 a {
   text-underline-offset: 2px;
-  text-decoration-color: #e4e0fd;
+  text-decoration-color: var(--ifm-link-decoration-color);
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
+  --ifm-color-primary-lightest: #f4f3fb;
+  --ifm-color-primary-lighter: #cdc8ed;
+  --ifm-color-primary-light: #c0bae8;
+  --ifm-color-primary: #a69ddf;
+  --ifm-color-primary-dark: #8b80d6;
+  --ifm-color-primary-darker: #7f72d1;
+  --ifm-color-primary-darkest: #5847c3;
+  --ifm-link-decoration-color: #4837b9;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }

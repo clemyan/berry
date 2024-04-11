@@ -32,7 +32,7 @@
   }
 
   .html:not(:global(.navbar--is-fixed)) :global(.navbar .navbar__logo) {
-    filter: none;
+    filter: saturate(0%) brightness(1000%);;
   }
 }
 

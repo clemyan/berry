@@ -1,4 +1,4 @@
 .notFoundContent {
-  background: white;
+  background: var(--ifm-background-color);
   border-radius: 10px;
 }

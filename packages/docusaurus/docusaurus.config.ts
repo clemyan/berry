@@ -200,7 +200,7 @@ export default async function (): Promise<Config> {
       image: `img/social-preview.png`,
       colorMode: {
         defaultMode: `light`,
-        disableSwitch: true,
+        disableSwitch: false,
         respectPrefersColorScheme: false,
       },
       algolia: {
