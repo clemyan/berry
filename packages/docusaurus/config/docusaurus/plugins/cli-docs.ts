@@ -4,7 +4,9 @@ import {YarnVersion, miscUtils}                               from '@yarnpkg/cor
 import type {BaseContext, Definition}                         from 'clipanion';
 import {Cli}                                                  from 'clipanion';
 import glob                                                   from 'fast-glob';
+import {mkdir, readFile, stat, writeFile}                     from 'fs/promises';
 import jiti                                                   from 'jiti';
+import v8                                                     from 'node:v8';
 import path                                                   from 'path';
 
 const PLUGIN_NAME = `docusaurus-plugin-yarn-cli-docs`;
@@ -64,6 +66,52 @@ export type Options = {
 };
 
 const plugin = async function(context: LoadContext, options: Options): Promise<Plugin<Record<string, Array<Definition>>>> {
+  const generatedBase = path.join(context.generatedFilesDir, PLUGIN_NAME, `default`);
+  const cachePath = path.join(generatedBase, `cache.bin`);
+
+  let cache: {
+    content: Map<string, Array<Definition>>;
+    mtimes: Map<string, Date>;
+  };
+
+  async function initCache() {
+    try {
+      cache = v8.deserialize(await readFile(cachePath));
+    } catch (err) {
+      cache = {
+        content: new Map(),
+        mtimes: new Map(),
+      };
+    }
+  }
+  async function refreshCache() {
+    await Promise.all(binaries.map(async binary => {
+      const paths = await glob(binary.watch, {cwd: process.cwd()});
+      const ds = await Promise.all(paths.map(async relPath => {
+        const absPath = path.resolve(process.cwd(), relPath);
+        const {mtime} = await stat(absPath);
+
+        const original = cache.mtimes.get(absPath) ?? -Infinity;
+        cache.mtimes.set(absPath, mtime);
+
+        return (mtime > original);
+      }));
+
+      if (ds.some(v => v)) {
+        const cli = await binary.getCli();
+        cache.content.set(binary.name, cli.definitions());
+      }
+    }));
+
+    process.nextTick(async () => {
+      await mkdir(generatedBase, {recursive: true});
+      await writeFile(cachePath, v8.serialize(cache));
+    });
+  }
+
+  const initP = initCache();
+  initP.catch(() => {});
+
   async function createBinaryPages(packageName: string, definitions: Array<Definition>, actions: PluginContentLoadedActions) {
     const pages = await Promise.all(
       definitions
@@ -299,12 +347,11 @@ const plugin = async function(context: LoadContext, options: Options): Promise<P
   return {
     name: PLUGIN_NAME,
     async loadContent() {
-      return Object.fromEntries(
-        await Promise.all(binaries.map(async ({name, getCli}) => {
-          const cli = await getCli();
-          return [name, cli.definitions()] as const;
-        })),
-      );
+      await initP;
+      await refreshCache();
+
+      const content = Object.fromEntries(cache.content);
+      return content;
     },
     async contentLoaded({content, actions}) {
       const pages = await Promise.all(
@@ -354,7 +401,7 @@ const plugin = async function(context: LoadContext, options: Options): Promise<P
           rules: [
             {
               test: /\.mdx$/,
-              include: path.join(context.generatedFilesDir, PLUGIN_NAME, `default`),
+              include: generatedBase,
               use: [
                 utils.getJSLoader({isServer}),
                 {
