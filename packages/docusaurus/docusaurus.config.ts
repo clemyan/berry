@@ -11,11 +11,13 @@ import {themes}                                                     from 'prism-
 import {satisfies}                                                  from 'semver';
 
 import * as autoLink                                                from './src/remark/autoLink';
+import * as commandLineHighlight2                                   from './src/remark/commandLineHighlight2';
 import * as commandLineHighlight                                    from './src/remark/commandLineHighlight';
 
-const remarkPlugins = [
-  commandLineHighlight.plugin(),
-  autoLink.plugin([{
+const remarkPlugins = {
+  commandLineHighlight: commandLineHighlight.plugin(),
+  commandLineHighlight2: commandLineHighlight2.plugin,
+  autoLink: autoLink.plugin([{
     sourceType: `json-schema`,
     path: require.resolve(`./static/configuration/manifest.json`),
     urlGenerator: name => `/configuration/manifest#${name}`,
@@ -24,7 +26,7 @@ const remarkPlugins = [
     path: require.resolve(`./static/configuration/yarnrc.json`),
     urlGenerator: name => `/configuration/yarnrc#${name}`,
   }]),
-];
+};
 
 function typedocPackageCategory(path: string) {
   if (path === `packages/yarnpkg-builder` || path === `packages/yarnpkg-cli`) {
@@ -92,7 +94,10 @@ async function typedocPluginConfig(): Promise<Partial<DocusaurusPluginTypeDocApi
     typedocOptions: {
       plugin: [`./src/typedoc/plugin.ts`],
     },
-    remarkPlugins,
+    remarkPlugins: [
+      remarkPlugins.commandLineHighlight,
+      remarkPlugins.autoLink,
+    ],
   };
 }
 
@@ -146,7 +151,10 @@ export default async function (): Promise<Config> {
       [
         require.resolve(`./config/docusaurus/plugins/cli-docs.ts`),
         {
-          remarkPlugins,
+          remarkPlugins: [
+            remarkPlugins.commandLineHighlight,
+            remarkPlugins.autoLink,
+          ],
         },
       ],
       [
@@ -172,7 +180,10 @@ export default async function (): Promise<Config> {
         {
           blog: {
             routeBasePath: `blog`,
-            remarkPlugins,
+            remarkPlugins: [
+              remarkPlugins.commandLineHighlight,
+              remarkPlugins.autoLink,
+            ],
           },
           docs: {
             routeBasePath: `/`,
@@ -183,7 +194,10 @@ export default async function (): Promise<Config> {
             },
             sidebarPath: require.resolve(`./config/docusaurus/sidebars.ts`),
             editUrl: `https://github.com/yarnpkg/berry/edit/master/packages/docusaurus/`,
-            remarkPlugins,
+            remarkPlugins: [
+              remarkPlugins.commandLineHighlight2,
+              remarkPlugins.autoLink,
+            ],
           },
           theme: {
             customCss: require.resolve(`./src/css/custom.css`),
