@@ -141,6 +141,14 @@ const makeCommandLine = (line: CommandLine, cli: YarnCli): MdxJsxTextElement => 
 const makeYarnCommand = (args: Array<string>, cli: YarnCli): MdxJsxTextElement => {
   const [, ...argv] = args;
 
+  // Define `yarn global` as an unknown command instead of implicit run
+  if (argv.length === 1 && argv[0] === `global`) {
+    return mdx(`${NAMESPACE}.Command`, {}, [
+      mdx(`${NAMESPACE}.Binary`, {}, cli.binaryName),
+      mdx(`${NAMESPACE}.Unknown`, {}, `global`),
+    ]);
+  }
+
   let command;
   try {
     command = cli.process({
@@ -154,6 +162,10 @@ const makeYarnCommand = (args: Array<string>, cli: YarnCli): MdxJsxTextElement =
       mdx(`${NAMESPACE}.Unknown`, {}, argv.join(` `)),
     ]);
   }
+
+  if (command.constructor.paths === undefined && !argv[0].includes(`/`))
+    logger.info`[CLH] Implicit run: "${args.join(` `)}"`;
+
   const definition = cli.definition(command.constructor);
 
   type RenderNode =
