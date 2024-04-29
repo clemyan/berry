@@ -16,7 +16,6 @@ const otherCli: Record<string, Array<string> | undefined> = {
   corepack: [`enable`],
   npm: [`install`, `run`],
   git: [`checkout`, `reset`, `rev-parse`],
-  cd: [],
 };
 
 const placeholders = new Map<string, string | MdxJsxTextElement>();
@@ -41,7 +40,15 @@ const mdx = (name: string | null, attributes: Record<string, string> = {}, child
   };
 };
 
-const makeBlock = (node: Code, cli: YarnCli): MdxJsxTextElement => {
+
+type Options = {};
+const parseOptions = (raw: string): Partial<Options> => Object.fromEntries(new URLSearchParams(raw));
+
+const makeBlock = (node: Code, options: Partial<Options>, cli: YarnCli): MdxJsxTextElement => {
+  const resolved = {
+    ...options,
+  };
+
   return mdx(`${NAMESPACE}.Block`, {}, node.value.trim().split(`\n`).map(line => {
     if (line.length === 0) {
       return mdx(`div`, {}, ` `);
@@ -53,7 +60,7 @@ const makeBlock = (node: Code, cli: YarnCli): MdxJsxTextElement => {
 
     const replaced = line.replaceAll(/<[^>]+>/g, match => createPlaceholder(match));
     try {
-      return mdx(`${NAMESPACE}.BlockLine`, {}, makeShellLine(parseShell(replaced), cli));
+      return mdx(`${NAMESPACE}.BlockLine`, {}, makeShellLine(parseShell(replaced), resolved, cli));
     } catch {
       logger.warn`[CLH] Failed to parse block line: "${line}"`;
       return mdx(`div`, {}, line);
@@ -61,7 +68,11 @@ const makeBlock = (node: Code, cli: YarnCli): MdxJsxTextElement => {
   }));
 };
 
-const makeInline = (node: InlineCode, cli: YarnCli): PhrasingContent => {
+const makeInline = (node: InlineCode, options: Partial<Options>, cli: YarnCli): PhrasingContent => {
+  const resolved = {
+    ...options,
+  };
+
   const line = node.value.trim();
   const replaced = line.replaceAll(/<[^>]+>/g, match => createPlaceholder(match));
 
@@ -73,12 +84,12 @@ const makeInline = (node: InlineCode, cli: YarnCli): PhrasingContent => {
     return node;
   }
 
-  return mdx(`${NAMESPACE}.Inline`, {}, makeCommandLine(parsed, cli));
+  return mdx(`${NAMESPACE}.Inline`, {}, makeCommandLine(parsed, resolved, cli));
 };
 
-const makeShellLine = (line: ShellLine, cli: YarnCli): MdxJsxTextElement => {
+const makeShellLine = (line: ShellLine, options: Options, cli: YarnCli): MdxJsxTextElement => {
   const children = line.flatMap((chain, i) => [
-    makeCommandLine(chain.command, cli),
+    makeCommandLine(chain.command, options, cli),
     mdx(`span`, {}, (chain.type === `;` ? `;` : ` &`) + (i === line.length - 1 ? `` : ` `)),
   ]);
 
@@ -88,7 +99,7 @@ const makeShellLine = (line: ShellLine, cli: YarnCli): MdxJsxTextElement => {
   return mdx(null, {}, children);
 };
 
-const makeCommandLine = (line: CommandLine, cli: YarnCli): MdxJsxTextElement => {
+const makeCommandLine = (line: CommandLine, options: Options, cli: YarnCli): MdxJsxTextElement => {
   const nodes = [];
   for (let command: CommandLine | undefined = line; command; command = command.then?.line) {
     for (let chain: CommandChain | undefined = command.chain; chain; chain = chain.then?.chain) {
@@ -108,7 +119,7 @@ const makeCommandLine = (line: CommandLine, cli: YarnCli): MdxJsxTextElement => 
           if (segment.type === `shell`) {
             return [
               segment.quoted ? `"$(` : `$(`,
-              makeShellLine(segment.shell, cli),
+              makeShellLine(segment.shell, options, cli),
               segment.quoted ? `)"` : `)`,
             ];
           } else {
@@ -123,7 +134,7 @@ const makeCommandLine = (line: CommandLine, cli: YarnCli): MdxJsxTextElement => 
         }
       });
 
-      nodes.push(args[0] === cli.binaryName ? makeYarnCommand(args, cli) : makeOtherCommand(args));
+      nodes.push(args[0] === cli.binaryName ? makeYarnCommand(args, options, cli) : makeOtherCommand(args));
 
       if (chain.then) {
         nodes.push(mdx(`span`, {}, ` ${chain.then.type} `));
@@ -138,7 +149,7 @@ const makeCommandLine = (line: CommandLine, cli: YarnCli): MdxJsxTextElement => 
   return mdx(null, {}, nodes);
 };
 
-const makeYarnCommand = (args: Array<string>, cli: YarnCli): MdxJsxTextElement => {
+const makeYarnCommand = (args: Array<string>, options: Options, cli: YarnCli): MdxJsxTextElement => {
   const [, ...argv] = args;
 
   // Make `yarn global` and unknown command instead of implicit run
@@ -277,16 +288,37 @@ export function plugin() {
     }
 
     visit(ast, (node, index, parent) => {
-      if (node.type === `code` && (node.lang === `commandline` || node.meta?.split(` `).includes(`commandline`))) {
-        parent!.children[index!] = makeBlock(node, cli);
-        ensureImport();
+      if (node.type === `code`) {
+        if (node.lang === `commandline`) {
+          const options = node.meta ? parseOptions(node.meta.split(` `, 1).pop()!) : {};
+          parent!.children[index!] = makeBlock(node, options, cli);
+          ensureImport();
 
-        return SKIP;
-      } else if (node.type === `inlineCode` && node.value.match(commandRegex) && node.value.includes(`!`)) {
-        parent!.children[index!] = makeInline(node, cli);
-        ensureImport();
+          return SKIP;
+        }
 
-        return SKIP;
+        const meta = node.meta?.split(` `).find(part => part.startsWith(`commandline`));
+        if (meta) {
+          const options = meta.startsWith(`commandline:`) ? parseOptions(meta.slice(`commandline:`.length)) : {};
+          parent!.children[index!] = makeBlock(node, options, cli);
+          ensureImport();
+
+          return SKIP;
+        }
+      } else if (node.type === `inlineCode` && !node.value.includes(`!`)) {
+        const prev = index !== undefined ? parent!.children[index - 1] : undefined;
+        const comment = prev?.type === `mdxTextExpression`
+          ? prev.data?.estree?.comments?.find(comment => /^\s*commandline(\s|$)/.test(comment.value))?.value
+          : undefined;
+        const match = comment?.match(/^\s*commandline:(\{.+)/);
+        const options = match ? parseOptions(match[1]) : {};
+
+        if (comment || node.value.match(commandRegex)) {
+          parent!.children[index!] = makeInline(node, options, cli);
+          ensureImport();
+
+          return SKIP;
+        }
       }
 
       return CONTINUE;
