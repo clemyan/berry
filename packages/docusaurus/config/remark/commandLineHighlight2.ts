@@ -53,6 +53,14 @@ const mdx = (name: string | null, attributes: Record<string, string> = {}, child
 const makeYarnCommand = (args: Array<string>, cli: YarnCli): MdxJsxTextElement => {
   const [, ...argv] = args;
 
+  // Define `yarn global` as an unknown command instead of implicit run
+  if (argv.length === 1 && argv[0] === `global`) {
+    return mdx(`${NAMESPACE}.Command`, {}, [
+      mdx(`${NAMESPACE}.Binary`, {}, cli.binaryName),
+      mdx(`${NAMESPACE}.Unknown`, {}, `global`),
+    ]);
+  }
+
   let command;
   try {
     command = cli.process({
@@ -66,6 +74,7 @@ const makeYarnCommand = (args: Array<string>, cli: YarnCli): MdxJsxTextElement =
       mdx(`${NAMESPACE}.Unknown`, {}, argv.join(` `)),
     ]);
   }
+
   const definition = cli.definition(command.constructor);
 
   type RenderNode =
