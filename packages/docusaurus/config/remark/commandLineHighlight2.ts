@@ -58,16 +58,54 @@ type Context = {
 
 // === Bare Options ===
 // These functions are for styling bare options (inline code that only contains an option without a command)
+const resolveOption = (name: string, definition: Definition) => {
+  if (name.startsWith(`--no-`)) {
+    const option = definition.options.find(option => option.nameSet.includes(name.slice(5)));
+    if (option) {
+      return {prefix: `--no-`, options: [{name: name.slice(5), description: option.description}]};
+    }
+  }
+  if (name.startsWith(`--`)) {
+    const option = definition.options.find(option => option.nameSet.includes(name));
+    if (option) {
+      return {prefix: `--`, options: [{name: name.slice(2), description: option.description}]};
+    }
+  } else if (name.startsWith(`-`)) {
+    const options = Array.from(name.slice(1)).map(name => {
+      const option = definition.options.find(option => option.nameSet.includes(`-${name}`));
+      return option ? {name, description: option.description} : null;
+    });
+    if (options.every(option => option !== null)) {
+      return {prefix: `-`, options};
+    }
+  }
+
+  return null;
+};
+
 const makeOption = ([name, ...args]: Array<string>, definition: Definition) => {
-  const option = definition.options.find(option => option.nameSet.includes(name));
-  if (option) {
+  const options = name.split(`,`).map(name => {
+    const resolved = resolveOption(name, definition);
+    if (resolved) {
+      return mdx(`${NAMESPACE}.Option`, {}, [
+        mdx(`${NAMESPACE}.OptionPrefix`, {}, resolved.prefix),
+        ...resolved.options.map(option => mdx(
+          `${NAMESPACE}.OptionName`,
+          option.description ? {tooltip: option.description} : {},
+          option.name,
+        )),
+      ]);
+    } else {
+      return mdx(`${NAMESPACE}.Unknown`, {}, name);
+    }
+  });
+
+  if (options.every(option => option.name !== `${NAMESPACE}.Unknown`)) {
     return mdx(`${NAMESPACE}.Inline`, {}, [
       mdx(`${NAMESPACE}.Command`, {}, [
-        mdx(
-          `${NAMESPACE}.Option`,
-          option?.description ? {tooltip: option.description} : {},
-          name,
-        ),
+        options.length > 1
+          ? mdx(`span`, {}, options.flatMap(option => [option, `,`]).slice(0, -1))
+          : options[0],
         ...args.map(arg => mdx(`${NAMESPACE}.Value`, {}, arg)),
       ]),
     ]);
@@ -172,7 +210,7 @@ const makeYarnCommand = (args: Array<string>, context: Context): MdxJsxTextEleme
       return mdx(
         `${NAMESPACE}.Option`,
         option?.description ? {tooltip: option.description} : {},
-        node.option,
+        resolveText(node),
       );
     } else {
       return mdx(

@@ -1,7 +1,7 @@
-import Link                                      from '@docusaurus/Link';
-import React, {Children, type PropsWithChildren} from 'react';
+import Link                                                      from '@docusaurus/Link';
+import React, {Children, type PropsWithChildren, type ReactNode} from 'react';
 
-import styles                                    from './CommandLineHighlight.module.css';
+import styles                                                    from './CommandLineHighlight.module.css';
 
 export function Block({children}: PropsWithChildren) {
   return (
@@ -64,12 +64,21 @@ export function Positional({children}: {children: string}) {
   return <Token type={`positional`}>{children}</Token>;
 }
 
-export function Option({children, tooltip}: {children: string, tooltip?: string}) {
-  const [,dashes, option] = children.match(/^(-*)(.+)$/s)!;
+export function Option({children, tooltip}: {children: string | Iterable<ReactNode>, tooltip?: string}) {
+  if (typeof children !== `string`)
+    return children;
+
+  const [, dashes, option] = children.match(/^(-*)(.+)$/s)!;
   return <>
-    <span className={styles.token} data-type={`dash`}>{dashes}</span>
-    <Token type={`option`} tooltip={tooltip}>{option}</Token>
+    <OptionPrefix>{dashes}</OptionPrefix>
+    <OptionName tooltip={tooltip}>{option}</OptionName>
   </>;
+}
+export function OptionPrefix({children}: {children: string}) {
+  return <Token type={`dash`}>{children}</Token>;
+}
+export function OptionName({children, tooltip}: {children: string, tooltip?: string}) {
+  return <Token type={`option`} tooltip={tooltip}>{children}</Token>;
 }
 
 export function Value({children}: {children: string}) {
