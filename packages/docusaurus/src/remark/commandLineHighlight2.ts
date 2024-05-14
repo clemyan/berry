@@ -230,7 +230,7 @@ const makeYarnCommand = (args: Array<string>, options: Options, cli: YarnCli): M
       return mdx(
         `${NAMESPACE}.Option`,
         option?.description ? {tooltip: option.description} : {},
-        node.option,
+        resolveText(node),
       );
     } else {
       return mdx(
@@ -262,18 +262,46 @@ const makeYarnCommand = (args: Array<string>, options: Options, cli: YarnCli): M
 };
 
 const makeBareOption = (node: InlineCode, options: Partial<Options>, definition: Definition) => {
-  const [text, ...rest] = node.value.split(` `);
+  const [optionText, ...values] = node.value.split(` `);
 
-  const option = definition.options.find(option => option.nameSet.includes(text));
+  const names = optionText.split(`,`).flatMap(name => {
+    if (name.startsWith(`--no-`)) {
+      // --no-check-resolution => [--check-resolution]
+      return [`--${name.slice(5)}`];
+    } else if (name.startsWith(`--`)) {
+      // --immutable => [--immutable]
+      return [name];
+    } else if (name.startsWith(`-`)) {
+      // -abcd => [-a, -b, -c, -d]
+      return Array.from(name.slice(1), char => `-${char}`);
+    } else {
+      return null;
+    }
+  });
+
+  const option = !names.includes(null) && definition.options.find(option => names.every(name => option.nameSet.includes(name!)));
   if (option) {
     return mdx(`${NAMESPACE}.Inline`, {}, [
       mdx(`${NAMESPACE}.Command`, {}, [
-        mdx(
-          `${NAMESPACE}.Option`,
-          option?.description ? {tooltip: option.description} : {},
-          text,
-        ),
-        ...rest.map(arg => mdx(
+        optionText.includes(`,`)
+          ? mdx(
+            `span`,
+            {},
+            optionText.split(`,`).flatMap(name => [
+              mdx(
+                `${NAMESPACE}.Option`,
+                option?.description ? {tooltip: option.description} : {},
+                name,
+              ),
+              mdx(`span`, {}, `,`),
+            ]).slice(0, -1),
+          )
+          : mdx(
+            `${NAMESPACE}.Option`,
+            option?.description ? {tooltip: option.description} : {},
+            optionText,
+          ),
+        ...values.map(arg => mdx(
           `${NAMESPACE}.Value`,
           {},
           arg,
