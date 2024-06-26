@@ -3,9 +3,6 @@ import eslintConfig      from '@yarnpkg/eslint-config';
 
 // eslint-disable-next-line arca/no-default-export
 export default [
-  ...eslintConfig,
-  ...reactEslintConfig,
-
   {
     ignores: [
       `**/coverage/**`,
@@ -29,7 +26,7 @@ export default [
       // Generated compressed workers
       `packages/yarnpkg-core/sources/worker-zip/index.js`,
 
-      // Compiled from C sources
+      // Pre-compiled from C sources
       `packages/yarnpkg-libzip/sources/libzipAsync.js`,
       `packages/yarnpkg-libzip/sources/libzipSync.js`,
       // The C sources themselves
@@ -45,12 +42,16 @@ export default [
       // Generated PEG.js grammars
       `packages/yarnpkg-parsers/sources/grammars/*.js`,
 
-      // Patched packages
+      // Patched fsevents
       `packages/plugin-compat/extra/fsevents/fsevents-*.js`,
     ],
   },
 
+  ...eslintConfig,
+  ...reactEslintConfig,
+
   {
+    name: `berry/naming-convention`,
     files: [`**/*.ts`, `**/*.cts`, `**/*.mts`, `**/*.tsx`],
     ignores: [`packages/*/sources/{index,Plugin}.ts`],
     rules: {
@@ -66,6 +67,7 @@ export default [
   },
 
   {
+    name: `berry/env/acceptance-tests`,
     files: [`packages/acceptance-tests/pkg-tests-specs/**/*.test.{js,ts}`],
     languageOptions: {
       globals: {
@@ -76,6 +78,7 @@ export default [
   },
 
   {
+    name: `berry/rules`,
     rules: {
       'no-restricted-properties': [2,
         {
