@@ -1,0 +1,2 @@
+[build]
+  command = "node packages/docusaurus/env.js && yarn packages/docusaurus build --no-minify"
