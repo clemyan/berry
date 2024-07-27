@@ -355,8 +355,7 @@ export function plugin() {
 
     const context: Context = {cli, bareOptions: {definition: null, pending: []}};
 
-    const knownCommands = [cli.binaryName, ...Object.keys(otherCli)];
-    const commandRegex = new RegExp(`^([A-Z_]+=\\w*\\s+)?(${knownCommands.join(`|`)})( |$)`);
+    const commandRegex = new RegExp(`^([A-Z_]+=\\w*\\s+)?(${Object.keys(otherCli).map(name => `${name} |${name}$`).join(`|`)}|${cli.binaryName} )`);
 
     let hasImport = ast.children.some(node => node.type === `mdxjsEsm` && node.value.includes(`* as ${NAMESPACE}`));
     function replaceNode(parent: Parent, index: number, node: PhrasingContent) {
