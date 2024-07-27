@@ -4303,7 +4303,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/debug@npm:^4.0.0":
+"@types/debug@npm:^4.0.0, @types/debug@npm:^4.1.12":
   version: 4.1.12
   resolution: "@types/debug@npm:4.1.12"
   dependencies:
@@ -5573,6 +5573,7 @@ __metadata:
     "@mdx-js/react": "npm:^3.0.0"
     "@monaco-editor/react": "npm:^4.4.6"
     "@primer/octicons-react": "npm:^17.7.0"
+    "@types/debug": "npm:^4.1.12"
     "@types/dompurify": "npm:^3"
     "@types/git-url-parse": "npm:^9.0.0"
     "@types/lodash": "npm:^4.14.136"
@@ -5600,8 +5601,10 @@ __metadata:
     "@yarnpkg/shell": "workspace:^"
     algoliasearch: "npm:^4.14.2"
     ansi-to-html: "npm:^0.7.2"
+    chalk: "npm:^3.0.0"
     clipanion: "npm:^4.0.0-rc.2"
     clsx: "npm:^1.2.1"
+    debug: "npm:^4.3.5"
     docusaurus-plugin-typedoc-api: "patch:docusaurus-plugin-typedoc-api@npm%3A4.2.0#~/.yarn/patches/docusaurus-plugin-typedoc-api-npm-4.2.0-fb78ec678c.patch"
     dompurify: "npm:^3.0.5"
     esast-util-from-js: "npm:^2.0.1"
@@ -8794,15 +8797,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"debug@npm:4, debug@npm:^4.0.0, debug@npm:^4.1.0, debug@npm:^4.1.1, debug@npm:^4.3.1, debug@npm:^4.3.2, debug@npm:^4.3.3, debug@npm:^4.3.4":
-  version: 4.3.4
-  resolution: "debug@npm:4.3.4"
+"debug@npm:4, debug@npm:^4.0.0, debug@npm:^4.1.0, debug@npm:^4.1.1, debug@npm:^4.3.1, debug@npm:^4.3.2, debug@npm:^4.3.3, debug@npm:^4.3.4, debug@npm:^4.3.5":
+  version: 4.3.5
+  resolution: "debug@npm:4.3.5"
   dependencies:
     ms: "npm:2.1.2"
   peerDependenciesMeta:
     supports-color:
       optional: true
-  checksum: 10/0073c3bcbd9cb7d71dd5f6b55be8701af42df3e56e911186dfa46fac3a5b9eb7ce7f377dd1d3be6db8977221f8eb333d945216f645cf56f6b688cd484837d255
+  checksum: 10/cb6eab424c410e07813ca1392888589972ce9a32b8829c6508f5e1f25f3c3e70a76731610ae55b4bbe58d1a2fffa1424b30e97fa8d394e49cd2656a9643aedd2
   languageName: node
   linkType: hard
 
