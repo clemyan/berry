@@ -1,7 +1,9 @@
 import logger                                                                                                                              from '@docusaurus/logger';
 import {type YarnCli, getCli}                                                                                                              from '@yarnpkg/cli';
 import {parseShell, stringifyArgument, stringifyArgumentSegment, stringifyEnvSegment, type CommandChain, type CommandLine, type ShellLine} from '@yarnpkg/parsers';
+import chalk                                                                                                                               from 'chalk';
 import type {Definition, Token}                                                                                                            from 'clipanion';
+import debug                                                                                                                               from 'debug';
 import {fromJs}                                                                                                                            from 'esast-util-from-js';
 import {capitalize}                                                                                                                        from 'lodash';
 import {fromMarkdown}                                                                                                                      from 'mdast-util-from-markdown';
@@ -12,6 +14,8 @@ import type {Transformer}                                                       
 import {CONTINUE, SKIP, visit}                                                                                                             from 'unist-util-visit';
 
 const NAMESPACE = `CommandLineHightlight`;
+
+const log = debug(`@yarnpkg/docusaurus:remark:clh`);
 
 const otherCli: Record<string, Array<string> | undefined> = {
   node: [],
@@ -154,10 +158,12 @@ let lastUsedDefinition: Definition | null = null;
 const pendingOptions: Array<{ parent: Parent, index: number, node: InlineCode }> = [];
 
 const makeYarnCommand = (args: Array<string>, cli: YarnCli): MdxJsxTextElement => {
+  const cmd = args.join(` `);
   const argv = args.slice(args[1]?.includes(`/`) ? 2 : 1);
 
   // Define `yarn global` as an unknown command instead of implicit run
   if (argv.length === 1 && argv[0] === `global`) {
+    log(`  - Resolved command "${chalk.bold.red(cmd)}" as unknown Yarn command`);
     return mdx(`${NAMESPACE}.Command`, {}, [
       mdx(`${NAMESPACE}.Binary`, {}, cli.binaryName),
       mdx(`${NAMESPACE}.Unknown`, {}, `global`),
@@ -172,13 +178,12 @@ const makeYarnCommand = (args: Array<string>, cli: YarnCli): MdxJsxTextElement =
       partial: true,
     });
   } catch {
+    log(`  - Resolved command "${chalk.bold.red(cmd)}" as unknown Yarn command`);
     return mdx(`${NAMESPACE}.Command`, {}, [
       mdx(`${NAMESPACE}.Binary`, {}, cli.binaryName),
       mdx(`${NAMESPACE}.Unknown`, {}, argv.join(` `)),
     ]);
   }
-
-  const definition = cli.definition(command.constructor);
 
   type RenderNode =
     | Exclude<Token, { type: `path` }>
@@ -211,6 +216,28 @@ const makeYarnCommand = (args: Array<string>, cli: YarnCli): MdxJsxTextElement =
     }
   }
 
+  const definition = cli.definition(command.constructor);
+  if (command.constructor.paths === undefined && !argv[0].includes(`/`))
+    log(`  - Resolved command "${chalk.bold.yellow(cmd)}" as implicit "yarn run"`);
+  else if (definition)
+    log(`  - Resolved command "${chalk.bold.green(cmd)}" as Yarn command "${definition?.path}"`);
+  else
+    log(`  - Resolved command "${chalk.bold.magenta(cmd)}" as Yarn command (no definition)`);
+
+  if (definition) {
+    lastUsedDefinition = definition;
+    for (const {parent, index, node} of pendingOptions) {
+      const replacement = makeBareOption(node, definition);
+      if (replacement) {
+        log(`    - Resolved option "${chalk.bold(node.value)}" with next definition: "${definition.path}"`);
+        parent.children[index] = replacement;
+      } else {
+        logger.warn`[CLH] Unable to resolve option "${node.value}"`;
+      }
+    }
+    pendingOptions.length = 0;
+  }
+
   const resolveText = (token: Token) => {
     return token.slice ? argv[token.segmentIndex].slice(...token.slice) : argv[token.segmentIndex];
   };
@@ -239,19 +266,6 @@ const makeYarnCommand = (args: Array<string>, cli: YarnCli): MdxJsxTextElement =
       );
     }
   };
-
-  if (definition) {
-    lastUsedDefinition = definition;
-    for (const {parent, index, node} of pendingOptions) {
-      const replacement = makeBareOption(node, definition);
-      if (replacement) {
-        parent.children[index] = replacement;
-      } else {
-        logger.warn`[CLH] Unable to resolve option "${node.value}"`;
-      }
-    }
-    pendingOptions.length = 0;
-  }
 
   const children = nodes.map(makeMdastNode);
   if (args[1]?.includes(`/`))
@@ -319,6 +333,8 @@ const makeOtherCommand = (args: Array<string>): MdxJsxTextElement => {
   const [name, ...argv] = args;
   const paths = otherCli[name];
 
+  log(`  - Resolved command "${chalk.bold.blue(args.join(` `))}" as other command`);
+
   const getTokenType = (text: string) => {
     if (paths?.includes(text)) {
       return `Path`;
@@ -337,7 +353,7 @@ const makeOtherCommand = (args: Array<string>): MdxJsxTextElement => {
 
 const cliP = getCli();
 export function plugin() {
-  const transformer: Transformer<Root> = async ast => {
+  const transformer: Transformer<Root> = async (ast, file) => {
     const cli = await cliP;
 
     const commandRegex = new RegExp(`^([A-Z_]+=\\w*\\s+)?(${Object.keys(otherCli).map(name => `${name} |${name}$`).join(`|`)}|${cli.binaryName} )`);
@@ -356,9 +372,13 @@ export function plugin() {
       }
     }
 
+    log(`Processing ${file.basename}`);
     visit(ast, (node, index, parent) => {
+      const location = node.position ? `${node.position.start.line}:${node.position.start.column}` : ``;
+
       if (node.type === `code`) {
         if (node.lang === `commandline`) {
+          log(`- ${location} Found commandline ${chalk.blue(`block`)} ${chalk.magenta(`[lang]`)}`);
           parent!.children[index!] = makeBlock(node, cli);
           ensureImport();
 
@@ -367,6 +387,7 @@ export function plugin() {
 
         const meta = node.meta?.split(` `).includes(`commandline`);
         if (meta) {
+          log(`- ${location} Found commandline ${chalk.blue(`block`)} ${chalk.yellow(`[meta]`)}`);
           parent!.children[index!] = makeBlock(node, cli);
           ensureImport();
 
@@ -384,9 +405,11 @@ export function plugin() {
           : undefined;
 
         if (node.value.match(/^--?\w/)) {
+          log(`- ${location} Found ${chalk.red(`bare option inline`)}`);
           if (lastUsedDefinition) {
             const replacement = makeBareOption(node, lastUsedDefinition);
             if (replacement) {
+              log(`  - Resolved option "${chalk.bold(node.value)}" with prev definition: "${lastUsedDefinition.path}"`);
               parent!.children[index!] = replacement;
               ensureImport();
 
@@ -394,11 +417,13 @@ export function plugin() {
             }
           }
 
+          log(`  - Deferring resolution of option "${chalk.bold(node.value)}"`);
           pendingOptions.push({parent: parent!, index: index!, node});
           return SKIP;
         }
 
         if (comment || node.value.match(commandRegex)) {
+          log(`- ${location} Found commandline ${chalk.green(`inline`)} ${comment ? chalk.yellow(`[comment]`) : chalk.magenta(`[command]`)}`);
           parent!.children[index!] = makeInline(node, cli);
           ensureImport();
 
