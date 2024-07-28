@@ -6,8 +6,10 @@ import type {Definition, Token}                                                 
 import debug                                                                                                                               from 'debug';
 import {fromJs}                                                                                                                            from 'esast-util-from-js';
 import {capitalize}                                                                                                                        from 'lodash';
-import type {MdxJsxTextElement}                                                                                                            from 'mdast-util-mdx-jsx';
-import type {Code, InlineCode, Parent, PhrasingContent, Root}                                                                              from 'mdast';
+import {fromMarkdown}                                                                                                                      from 'mdast-util-from-markdown';
+import {mdxJsxFromMarkdown, type MdxJsxTextElement}                                                                                        from 'mdast-util-mdx-jsx';
+import type {Code, InlineCode, Parent, PhrasingContent, Root, Node as MdastNode}                                                           from 'mdast';
+import {mdxjs}                                                                                                                             from 'micromark-extension-mdxjs';
 import type {Transformer}                                                                                                                  from 'unified';
 import {CONTINUE, SKIP, visit}                                                                                                             from 'unist-util-visit';
 
@@ -52,6 +54,17 @@ const makeBlock = (node: Code, cli: YarnCli): MdxJsxTextElement => {
       return mdx(`${NAMESPACE}.BlockLine`, {}, [
         mdx(`${NAMESPACE}.Comment`, {}, line),
       ]);
+    } else if (line.endsWith(`# commandline-raw`)) {
+      let node: MdastNode = fromMarkdown(line.slice(0, -17), {extensions: [mdxjs()], mdastExtensions: [mdxJsxFromMarkdown()]});
+      while (node.type !== `mdxJsxTextElement`) {
+        if (`children` in node) {
+          node = (node as Parent).children[0];
+        } else {
+          throw new Error(`Unable to parse raw line: "${line}"`);
+        }
+      }
+
+      return mdx(`${NAMESPACE}.BlockLine`, {}, node as MdxJsxTextElement);
     }
 
     const replaced = line.replaceAll(/<[^>]+>/g, match => createPlaceholder(match));
