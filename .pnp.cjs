@@ -9421,6 +9421,7 @@ const RAW_RUNTIME_STATE =
           ["markdown-it-br", "npm:1.0.0"],\
           ["marked", "npm:5.1.1"],\
           ["marked-base-url", "virtual:efae73f2e9aa11493dde5182b5b7f0894b5c101cb3c916b74523dc0bde92d8579259d43c7f83a5363dbd8939dc3d1e6c45c5965b9191878533d9a2c19b046d70#npm:1.0.1"],\
+          ["mdast-util-directive", "npm:3.0.0"],\
           ["mdast-util-mdx-jsx", "npm:3.0.0"],\
           ["monaco-editor", "npm:0.24.0"],\
           ["os-browserify", "npm:0.3.0"],\

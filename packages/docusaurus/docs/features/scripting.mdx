@@ -23,7 +23,7 @@ Where `.env.local` will take precedence only if present, and ignored otherwise.
 
 ## Parallel tasks
 
-Yarn has a native integration for the background job syntax (`foo&`) within scripts defined in the `scripts` field. It will run them in parallel, and each line of the output will be prefixed by an identifier showing where they come from. For example, the following command will run linting and tests in parallel, and report once both are finished:
+Yarn has a native integration for the background job syntax (:commandline[`foo &`]) within scripts defined in the `scripts` field. It will run them in parallel, and each line of the output will be prefixed by an identifier showing where they come from. For example, the following command will run linting and tests in parallel, and report once both are finished:
 
 <TerminalCode command={`yarn lint & yarn test`}/>
 
@@ -31,7 +31,7 @@ Yarn has a native integration for the background job syntax (`foo&`) within scri
 
 Windows portability can be troublesome with other package managers. Scripts can't expect a Posix shell to be available, so you have to rely on strange hacks to use semi-portable scripts - or drop them altogether and use Node.js scripts instead, defeating the point of small, non-intrusive scripts in the first place. That is, unless you use Yarn!
 
-Yarn implements and maintains a Posix-like shell interpreter that supports all of the syntax you typically find within scripts, along with a couple of simple builtins like `cd` / `echo`. For instance, the following command will work just fine on both Windows and Linux despite assigning environment variables:
+Yarn implements and maintains a Posix-like shell interpreter that supports all of the syntax you typically find within scripts, along with a couple of simple builtins like :commandline[`cd`] / :commandline[`echo`]. For instance, the following command will work just fine on both Windows and Linux despite assigning environment variables:
 
 <TerminalCode command={`NODE_ENV=production webpack`}/>
 
@@ -41,7 +41,7 @@ We say it's a Posix-like interpreter rather than a Posix-compatible interpreter 
 
 ## Script arguments
 
-By default, any parameter following the name of the script in `yarn run` will be added to the evaluated command. It works well enough in simple cases, like this one where running `yarn test packages/lib` will lead to `jest packages/lib` being evaluated:
+By default, any parameter following the name of the script in `yarn run` will be added to the evaluated command. It works well enough in simple cases, like this one where running `yarn test packages/lib` will lead to :commandline[`jest packages/lib`] being evaluated:
 
 ```json
 {

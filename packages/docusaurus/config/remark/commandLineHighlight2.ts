@@ -1,3 +1,4 @@
+import type {} from 'mdast-util-directive';
 import logger                                                                                                                              from '@docusaurus/logger';
 import {type YarnCli, getCli}                                                                                                              from '@yarnpkg/cli';
 import {parseShell, stringifyArgument, stringifyArgumentSegment, stringifyEnvSegment, type CommandChain, type CommandLine, type ShellLine} from '@yarnpkg/parsers';
@@ -18,7 +19,6 @@ const otherCli: Record<string, Array<string> | undefined> = {
   corepack: [`enable`],
   npm: [`install`, `run`],
   git: [`checkout`, `reset`, `rev-parse`],
-  cd: [],
 };
 
 // === Placeholders ===
@@ -253,15 +253,12 @@ const makeInline = (node: InlineCode, cli: YarnCli): PhrasingContent => {
   const line = node.value.trim();
   const replaced = line.replaceAll(/<[^>]+>/g, match => createPlaceholder(match));
 
-  let parsed;
   try {
-    parsed = parseShell(replaced)[0].command;
+    return mdx(`${NAMESPACE}.Inline`, {}, makeShellLine(parseShell(replaced), cli));
   } catch {
     logger.warn`[CLH] Failed to parse inline line: "${line}"`;
     return node;
   }
-
-  return mdx(`${NAMESPACE}.Inline`, {}, makeCommandLine(parsed, cli));
 };
 
 // === Plugin ===
@@ -295,6 +292,19 @@ export function plugin() {
         return SKIP;
       } else if (node.type === `inlineCode` && node.value.match(commandRegex) && !node.value.includes(`!`)) {
         parent!.children[index!] = makeInline(node, cli);
+        ensureImport();
+
+        return SKIP;
+      } else if (node.type === `textDirective` && node.name === `commandline`) {
+        if (node.children.length !== 1 || node.children[0].type !== `inlineCode`) {
+          logger.warn`[CLH] :commandline directive must contain exactly one inlineCode element`;
+
+          parent!.children.splice(index!, 1, ...node.children);
+
+          return index;
+        }
+
+        parent!.children[index!] = makeInline(node.children[0], cli);
         ensureImport();
 
         return SKIP;
