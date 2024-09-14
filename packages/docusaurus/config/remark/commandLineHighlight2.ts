@@ -6,7 +6,7 @@ import type {Token}                                                             
 import {fromJs}                                                                                                                            from 'esast-util-from-js';
 import {capitalize}                                                                                                                        from 'lodash';
 import type {MdxJsxTextElement}                                                                                                            from 'mdast-util-mdx-jsx';
-import type {Code, InlineCode, PhrasingContent, Root}                                                                                      from 'mdast';
+import type {Code, InlineCode, Parent, PhrasingContent, Root}                                                                              from 'mdast';
 import type {Transformer}                                                                                                                  from 'unified';
 import {CONTINUE, SKIP, visit}                                                                                                             from 'unist-util-visit';
 
@@ -48,9 +48,13 @@ const mdx = (name: string | null, attributes: Record<string, string> = {}, child
   };
 };
 
+type Context = {
+  cli: YarnCli;
+};
+
 // === Command Processing ===
 // These functions take parsed args lists for a single command and return mdast nodes for styled MDX elements
-const makeYarnCommand = (args: Array<string>, cli: YarnCli): MdxJsxTextElement => {
+const makeYarnCommand = (args: Array<string>, {cli}: Context): MdxJsxTextElement => {
   const [, ...argv] = args;
 
   // Define `yarn global` as an unknown command instead of implicit run
@@ -165,7 +169,7 @@ const makeOtherCommand = (args: Array<string>): MdxJsxTextElement => {
 
 // === Line Processing ===
 // These functions take parsed shell lines (data structures defined in @yarnpkg/parsers) and return mdast nodes for styled MDX elements
-const makeCommandLine = (line: CommandLine, cli: YarnCli): MdxJsxTextElement => {
+const makeCommandLine = (line: CommandLine, context: Context): MdxJsxTextElement => {
   const nodes = [];
   for (let command: CommandLine | undefined = line; command; command = command.then?.line) {
     for (let chain: CommandChain | undefined = command.chain; chain; chain = chain.then?.chain) {
@@ -185,7 +189,7 @@ const makeCommandLine = (line: CommandLine, cli: YarnCli): MdxJsxTextElement => 
           if (segment.type === `shell`) {
             return [
               segment.quoted ? `"$(` : `$(`,
-              makeShellLine(segment.shell, cli),
+              makeShellLine(segment.shell, context),
               segment.quoted ? `)"` : `)`,
             ];
           } else {
@@ -200,7 +204,7 @@ const makeCommandLine = (line: CommandLine, cli: YarnCli): MdxJsxTextElement => 
         }
       });
 
-      nodes.push(args[0] === cli.binaryName ? makeYarnCommand(args, cli) : makeOtherCommand(args));
+      nodes.push(args[0] === context.cli.binaryName ? makeYarnCommand(args, context) : makeOtherCommand(args));
 
       if (chain.then) {
         nodes.push(mdx(`span`, {}, ` ${chain.then.type} `));
@@ -215,9 +219,9 @@ const makeCommandLine = (line: CommandLine, cli: YarnCli): MdxJsxTextElement => 
   return mdx(null, {}, nodes);
 };
 
-const makeShellLine = (line: ShellLine, cli: YarnCli): MdxJsxTextElement => {
+const makeShellLine = (line: ShellLine, context: Context): MdxJsxTextElement => {
   const children = line.flatMap((chain, i) => [
-    makeCommandLine(chain.command, cli),
+    makeCommandLine(chain.command, context),
     mdx(`span`, {}, (chain.type === `;` ? `;` : ` &`) + (i === line.length - 1 ? `` : ` `)),
   ]);
 
@@ -229,7 +233,7 @@ const makeShellLine = (line: ShellLine, cli: YarnCli): MdxJsxTextElement => {
 
 // === Node Processing ===
 // These functions take the mdast nodes and return mdast nodes for styled MDX elements
-const makeBlock = (node: Code, cli: YarnCli): MdxJsxTextElement => {
+const makeBlock = (node: Code, context: Context): MdxJsxTextElement => {
   return mdx(`${NAMESPACE}.Block`, {}, node.value.trim().split(`\n`).map(line => {
     if (line.length === 0) {
       return mdx(`div`, {}, ` `);
@@ -241,7 +245,7 @@ const makeBlock = (node: Code, cli: YarnCli): MdxJsxTextElement => {
 
     const replaced = line.replaceAll(/<[^>]+>/g, match => createPlaceholder(match));
     try {
-      return mdx(`${NAMESPACE}.BlockLine`, {}, makeShellLine(parseShell(replaced), cli));
+      return mdx(`${NAMESPACE}.BlockLine`, {}, makeShellLine(parseShell(replaced), context));
     } catch {
       logger.warn`[CLH] Failed to parse block line: "${line}"`;
       return mdx(`div`, {}, line);
@@ -249,12 +253,12 @@ const makeBlock = (node: Code, cli: YarnCli): MdxJsxTextElement => {
   }));
 };
 
-const makeInline = (node: InlineCode, cli: YarnCli): PhrasingContent => {
+const makeInline = (node: InlineCode, context: Context): PhrasingContent => {
   const line = node.value.trim();
   const replaced = line.replaceAll(/<[^>]+>/g, match => createPlaceholder(match));
 
   try {
-    return mdx(`${NAMESPACE}.Inline`, {}, makeShellLine(parseShell(replaced), cli));
+    return mdx(`${NAMESPACE}.Inline`, {}, makeShellLine(parseShell(replaced), context));
   } catch {
     logger.warn`[CLH] Failed to parse inline line: "${line}"`;
     return node;
@@ -267,11 +271,15 @@ export function plugin() {
   const transformer: Transformer<Root> = async ast => {
     const cli = await cliP;
 
+    const context = {cli};
+
     const knownCommands = [cli.binaryName, ...Object.keys(otherCli)];
     const commandRegex = new RegExp(`^([A-Z_]+=\\w*\\s+)?(${knownCommands.join(`|`)})( |$)`);
 
     let hasImport = ast.children.some(node => node.type === `mdxjsEsm` && node.value.includes(`* as ${NAMESPACE}`));
-    function ensureImport() {
+    function replaceNode(parent: Parent, index: number, node: PhrasingContent) {
+      parent.children[index] = node;
+
       if (!hasImport) {
         hasImport = true;
 
@@ -282,19 +290,15 @@ export function plugin() {
           data: {estree: fromJs(code, {module: true})},
         });
       }
+
+      return SKIP;
     }
 
     visit(ast, (node, index, parent) => {
       if (node.type === `code` && (node.lang === `commandline` || node.meta?.split(` `).includes(`commandline`))) {
-        parent!.children[index!] = makeBlock(node, cli);
-        ensureImport();
-
-        return SKIP;
+        return replaceNode(parent!, index!, makeBlock(node, context));
       } else if (node.type === `inlineCode` && node.value.match(commandRegex) && !node.value.includes(`!`)) {
-        parent!.children[index!] = makeInline(node, cli);
-        ensureImport();
-
-        return SKIP;
+        return replaceNode(parent!, index!, makeInline(node, context));
       } else if (node.type === `textDirective` && node.name === `commandline`) {
         if (node.children.length !== 1 || node.children[0].type !== `inlineCode`) {
           logger.warn`[CLH] :commandline directive must contain exactly one inlineCode element`;
@@ -304,10 +308,7 @@ export function plugin() {
           return index;
         }
 
-        parent!.children[index!] = makeInline(node.children[0], cli);
-        ensureImport();
-
-        return SKIP;
+        return replaceNode(parent!, index!, makeInline(node.children[0], context));
       }
 
       return CONTINUE;
