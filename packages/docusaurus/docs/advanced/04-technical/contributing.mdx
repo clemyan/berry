@@ -57,7 +57,7 @@ yarn test:integration
 
 Note that because we want to avoid adding the `esbuild` overhead to each Yarn call the CLI will need to be prebuilt for the integration tests to run - that's what the `yarn build:cli` command is for. This unfortunately means that you will need to rebuild the CLI after each modification if you want the integration tests to pick up your changes.
 
-Both unit tests and integration tests use Jest, which means that you can filter the tests you want to run by using the `-t` flag (or simply the file path):
+Both unit tests and integration tests use Jest, which means that you can filter the tests you want to run by using the <code>-t</code> flag (or simply the file path):
 
 ```commandline
 yarn test:unit yarnpkg-shell
@@ -79,7 +79,7 @@ Before submitting your code for review, please make sure your code is properly f
 yarn test:lint
 ```
 
-We use ESLint to check this, so using the `--fix` flag will cause ESLint to attempt to automatically correct most errors that might be left in your code:
+We use ESLint to check this, so using the <code>--fix</code> flag will cause ESLint to attempt to automatically correct most errors that might be left in your code:
 
 ```commandline
 yarn test:lint --fix

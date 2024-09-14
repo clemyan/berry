@@ -2,7 +2,7 @@ import type {} from 'mdast-util-directive';
 import logger                                                                                                                              from '@docusaurus/logger';
 import {type YarnCli, getCli}                                                                                                              from '@yarnpkg/cli';
 import {parseShell, stringifyArgument, stringifyArgumentSegment, stringifyEnvSegment, type CommandChain, type CommandLine, type ShellLine} from '@yarnpkg/parsers';
-import type {Token}                                                                                                                        from 'clipanion';
+import type {Definition, Token}                                                                                                            from 'clipanion';
 import {fromJs}                                                                                                                            from 'esast-util-from-js';
 import {capitalize}                                                                                                                        from 'lodash';
 import type {MdxJsxTextElement}                                                                                                            from 'mdast-util-mdx-jsx';
@@ -49,37 +49,79 @@ const mdx = (name: string | null, attributes: Record<string, string> = {}, child
 };
 
 type Context = {
-  cli: YarnCli;
+  readonly cli: YarnCli;
+  readonly bareOptions: {
+    definition: Definition | null;
+    readonly pending: Array<{ node: InlineCode, resolve: (node: PhrasingContent) => void }>;
+  };
+};
+
+// === Bare Options ===
+// These functions are for styling bare options (inline code that only contains an option without a command)
+const makeOption = ([name, ...args]: Array<string>, definition: Definition) => {
+  const option = definition.options.find(option => option.nameSet.includes(name));
+  if (option) {
+    return mdx(`${NAMESPACE}.Inline`, {}, [
+      mdx(`${NAMESPACE}.Command`, {}, [
+        mdx(
+          `${NAMESPACE}.Option`,
+          option?.description ? {tooltip: option.description} : {},
+          name,
+        ),
+        ...args.map(arg => mdx(`${NAMESPACE}.Value`, {}, arg)),
+      ]),
+    ]);
+  } else {
+    return null;
+  }
+};
+
+const makeBareOption = (node: InlineCode, {bareOptions: {definition}}: Context): MdxJsxTextElement | null => {
+  return definition ? makeOption(node.value.split(` `), definition) : null;
+};
+
+const useDefinition = (definition: Definition | null, context: Context) => {
+  context.bareOptions.definition = definition;
+  for (const {node, resolve} of context.bareOptions.pending) {
+    const processed = makeBareOption(node, context);
+    if (processed) {
+      resolve(processed);
+    } else {
+      logger.warn`[CLH] Unable to resolve option "${node.value}"`;
+    }
+  }
+
+  context.bareOptions.pending.length = 0;
 };
 
 // === Command Processing ===
 // These functions take parsed args lists for a single command and return mdast nodes for styled MDX elements
-const makeYarnCommand = (args: Array<string>, {cli}: Context): MdxJsxTextElement => {
+const makeYarnCommand = (args: Array<string>, context: Context): MdxJsxTextElement => {
   const [, ...argv] = args;
 
   // Define `yarn global` as an unknown command instead of implicit run
   if (argv.length === 1 && argv[0] === `global`) {
     return mdx(`${NAMESPACE}.Command`, {}, [
-      mdx(`${NAMESPACE}.Binary`, {}, cli.binaryName),
+      mdx(`${NAMESPACE}.Binary`, {}, context.cli.binaryName),
       mdx(`${NAMESPACE}.Unknown`, {}, `global`),
     ]);
   }
 
   let command;
   try {
-    command = cli.process({
+    command = context.cli.process({
       input: argv,
-      context: cli.defaultContext,
+      context: context.cli.defaultContext,
       partial: true,
     });
   } catch {
     return mdx(`${NAMESPACE}.Command`, {}, [
-      mdx(`${NAMESPACE}.Binary`, {}, cli.binaryName),
+      mdx(`${NAMESPACE}.Binary`, {}, context.cli.binaryName),
       mdx(`${NAMESPACE}.Unknown`, {}, argv.join(` `)),
     ]);
   }
 
-  const definition = cli.definition(command.constructor);
+  const definition = context.cli.definition(command.constructor);
 
   type RenderNode =
     | Exclude<Token, { type: `path` }>
@@ -141,8 +183,10 @@ const makeYarnCommand = (args: Array<string>, {cli}: Context): MdxJsxTextElement
     }
   };
 
+  useDefinition(definition, context);
+
   return mdx(`${NAMESPACE}.Command`, {}, [
-    mdx(`${NAMESPACE}.Binary`, {}, cli.binaryName),
+    mdx(`${NAMESPACE}.Binary`, {}, context.cli.binaryName),
     ...nodes.map(makeMdastNode),
   ]);
 };
@@ -271,7 +315,7 @@ export function plugin() {
   const transformer: Transformer<Root> = async ast => {
     const cli = await cliP;
 
-    const context = {cli};
+    const context: Context = {cli, bareOptions: {definition: null, pending: []}};
 
     const knownCommands = [cli.binaryName, ...Object.keys(otherCli)];
     const commandRegex = new RegExp(`^([A-Z_]+=\\w*\\s+)?(${knownCommands.join(`|`)})( |$)`);
@@ -297,8 +341,25 @@ export function plugin() {
     visit(ast, (node, index, parent) => {
       if (node.type === `code` && (node.lang === `commandline` || node.meta?.split(` `).includes(`commandline`))) {
         return replaceNode(parent!, index!, makeBlock(node, context));
-      } else if (node.type === `inlineCode` && node.value.match(commandRegex) && !node.value.includes(`!`)) {
-        return replaceNode(parent!, index!, makeInline(node, context));
+      } else if (node.type === `inlineCode`) {
+        if (node.value.includes(`!`)) {
+          logger.warn`[CLH] Split-based options are not supported: "${node.value}"`;
+          return SKIP;
+        }
+
+        if (node.value.match(commandRegex)) {
+          return replaceNode(parent!, index!, makeInline(node, context));
+        } else if (node.value.match(/^--?\w/)) {
+          if (context.bareOptions.definition) {
+            const processed = makeBareOption(node, context);
+            if (processed) {
+              return replaceNode(parent!, index!, processed);
+            }
+          }
+          context.bareOptions.pending.push({node, resolve: replaceNode.bind(null, parent!, index!)});
+
+          return SKIP;
+        }
       } else if (node.type === `textDirective` && node.name === `commandline`) {
         if (node.children.length !== 1 || node.children[0].type !== `inlineCode`) {
           logger.warn`[CLH] :commandline directive must contain exactly one inlineCode element`;
@@ -313,6 +374,12 @@ export function plugin() {
 
       return CONTINUE;
     });
+
+    if (context.bareOptions.pending.length > 0) {
+      for (const {node} of context.bareOptions.pending) {
+        logger.warn`[CLH] Unable to resolve option "${node.value}"`;
+      }
+    }
   };
 
   return transformer;
