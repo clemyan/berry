@@ -2189,11 +2189,10 @@ function applyVirtualResolutionMutations({
   const virtualStack = new Map<LocatorHash, number>();
   const resolutionStack: Array<Locator> = [];
 
-  const allIdents = new Map<IdentHash, Ident>();
-
   /** Maps dependency hashes to the first virtual locator encountered with that hash, for deduplication */
   const allVirtualInstances = new Map<string, Locator>();
-  const allVirtualDependents = new Map<LocatorHash, Set<LocatorHash>>();
+  /** Maps virtual locators to all virtual packages that depends on it, for deduplication */
+  const allVirtualVirtualDependents = new Map<LocatorHash, Set<LocatorHash>>();
   /** Maps virtual locators to all (virtual) descriptors that resolve to them, for deduplication */
   const allVirtualResolutions = new Map<LocatorHash, Set<DescriptorHash>>();
 
@@ -2342,7 +2341,7 @@ function applyVirtualResolutionMutations({
 
         for (const peerDescriptor of virtualizedPackage.peerDependencies.values()) {
           const peerRequirement = miscUtils.getFactoryWithDefault(parentPeerRequirements, peerDescriptor.identHash, (): PeerRequirementNode => {
-            let parentRequest = parentPeerRequests.get(peerDescriptor.identHash) ?? null;
+            const parentRequest = parentPeerRequests.get(peerDescriptor.identHash) ?? null;
 
             // 1. Try to resolve the peer request with parent's dependencies (siblings)
             let peerProvision = parentPackage.dependencies.get(peerDescriptor.identHash);
@@ -2359,8 +2358,6 @@ function applyVirtualResolutionMutations({
                 allResolutions.set(peerProvision.descriptorHash, parentLocator.locatorHash);
 
                 volatileDescriptors.delete(peerProvision.descriptorHash);
-
-                parentRequest = null;
               }
             }
 
@@ -2401,12 +2398,11 @@ function applyVirtualResolutionMutations({
           // that if and when the latter is deduplicated, we know the former
           // needs to be deduplicated again
           if (structUtils.isVirtualDescriptor(peerProvision)) {
-            const dependentLocatorHash = allResolutions.get(peerProvision.descriptorHash);
-            const dependents = miscUtils.getSetWithDefault(allVirtualDependents, dependentLocatorHash);
+            const provisionHash = allResolutions.get(peerProvision.descriptorHash);
+            const dependents = miscUtils.getSetWithDefault(allVirtualVirtualDependents, provisionHash);
             dependents.add(virtualizedPackage.locatorHash);
           }
 
-          allIdents.set(peerProvision.identHash, peerProvision);
           if (peerProvision.range === `missing:`) {
             missingPeerDependencies.add(peerProvision.identHash);
           }
@@ -2418,13 +2414,13 @@ function applyVirtualResolutionMutations({
         }));
       });
 
-      // Between the second and third passes, the deduplication passes happen.
+      // Between the second and third passes, the deduplication pass happen.
 
       // In the third pass, we recurse to resolve the peer request for the
       // virtual package, but only if it is not deduplicated. If the virtual
       // package is deduplicated, this would already have been done. This must
-      // be done after the deduplication passes as otherwise it could lead to
-      // infinite recursion when dealing with circular dependencies.
+      // be done after deduplication as otherwise it could lead to infinite
+      // recursion when dealing with circular dependencies.
       thirdPass.push(() => {
         if (!allPackages.has(virtualizedPackage.locatorHash))
           return;
@@ -2446,7 +2442,7 @@ function applyVirtualResolutionMutations({
         virtualStack.set(pkg.locatorHash, next - 1);
       });
 
-      // In the fourth pass, we register information about the peer requirement
+      // In the fourth pass, we register information to the peer requirement
       // and peer request trees, using the post-deduplication information.
       fourthPass.push(() => {
         const finalResolution = allResolutions.get(virtualizedDescriptor.descriptorHash)!;
@@ -2482,8 +2478,9 @@ function applyVirtualResolutionMutations({
       fn();
 
     for (const locatorHash of dedupeCandidates) {
-      // Remove locatorHash here so that if a dependency is deduped, it will be
-      // deduped again when added to the dedupe candidates
+      // Remove locatorHash here so that if a (virtual) dependency of this
+      // package is deduped in a later loop iteration, this package would be
+      // deduped again
       dedupeCandidates.delete(locatorHash);
 
       const virtualPackage = allPackages.get(locatorHash)!;
@@ -2521,13 +2518,12 @@ function applyVirtualResolutionMutations({
       }
       allPackages.delete(virtualPackage.locatorHash);
       accessibleLocators.delete(virtualPackage.locatorHash);
-      dedupeCandidates.delete(virtualPackage.locatorHash);
 
-      const dependents = allVirtualDependents.get(virtualPackage.locatorHash);
+      const dependents = allVirtualVirtualDependents.get(virtualPackage.locatorHash);
       if (dependents !== undefined) {
-        const masterDependents = miscUtils.getSetWithDefault(allVirtualDependents, masterLocator.locatorHash);
+        const masterDependents = miscUtils.getSetWithDefault(allVirtualVirtualDependents, masterLocator.locatorHash);
         for (const dependent of dependents) {
-          // A dependent of the virtual package is now a dependent of the
+          // A dependent of the deduplicated package is now a dependent of the
           // master package
           masterDependents.add(dependent);
 
@@ -2546,9 +2542,42 @@ function applyVirtualResolutionMutations({
 
   for (const workspace of project.workspaces) {
     const locator = workspace.anchoredLocator;
+    const pkg = allPackages.get(locator.locatorHash)!;
 
     volatileDescriptors.delete(workspace.anchoredDescriptor.descriptorHash);
-    resolvePeerDependencies(workspace.anchoredDescriptor, locator, new Map(), {top: locator.locatorHash, optional: false});
+
+    const peerRequests = new Map<IdentHash, PeerRequestNode>();
+    for (const [peerIdentHash, peerDescriptor] of pkg.peerDependencies) {
+      peerRequests.set(peerIdentHash, {
+        requester: locator,
+        descriptor: peerDescriptor,
+        meta: pkg.peerDependenciesMeta.get(structUtils.stringifyIdent(peerDescriptor)),
+
+        children: new Map(),
+      });
+    }
+    allPeerRequests.set(locator.locatorHash, peerRequests);
+
+    resolvePeerDependencies(workspace.anchoredDescriptor, locator, peerRequests, {top: locator.locatorHash, optional: false});
+
+    for (const [peerIdentHash, request] of peerRequests) {
+      const hash = `p${hashUtils.makeHash(locator.locatorHash, peerIdentHash).slice(0, 5)}`;
+      const peeRequirement = miscUtils.getFactoryWithDefault(peerRequirementNodes, hash, () => {
+        const peerDescriptor = pkg.peerDependencies.get(peerIdentHash)!;
+        return {
+          subject: locator,
+          ident: peerDescriptor,
+          provided: pkg.dependencies.get(peerIdentHash) ?? structUtils.makeDescriptor(peerDescriptor, `missing:`),
+          root: true,
+
+          requests: new Map(),
+
+          hash,
+        };
+      });
+
+      peeRequirement.requests.set(workspace.anchoredDescriptor.descriptorHash, request);
+    }
   }
 
   for (const requirement of peerRequirementNodes.values()) {
