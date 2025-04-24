@@ -352,7 +352,8 @@ const makeOtherCommand = (args: Array<string>): MdxJsxTextElement => {
 };
 
 const cliP = getCli();
-export function plugin() {
+type Options = { debug: boolean | string };
+export function plugin({debug}: Options) {
   const transformer: Transformer<Root> = async (ast, file) => {
     const cli = await cliP;
 
@@ -438,6 +439,28 @@ export function plugin() {
       for (const {node} of pendingOptions) {
         logger.warn`[CLH] Unable to resolve option "${node.value}"`;
       }
+    }
+
+    if (debug) {
+      ast.children.push({
+        type: `table`,
+        children: [
+          {
+            type: `tableRow`,
+            children: [
+              {type: `tableCell`, children: [{type: `text`, value: `Command`}]},
+              {type: `tableCell`, children: [{type: `text`, value: `Description`}]},
+            ],
+          },
+          {
+            type: `tableRow`,
+            children: [
+              {type: `tableCell`, children: [{type: `text`, value: `Command`}]},
+              {type: `tableCell`, children: [{type: `text`, value: `Description`}]},
+            ],
+          },
+        ],
+      });
     }
   };
 

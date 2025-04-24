@@ -205,7 +205,7 @@ export default async function (): Promise<Config> {
             sidebarPath: `./config/docusaurus/sidebars.ts`,
             editUrl: `https://github.com/yarnpkg/berry/edit/master/packages/docusaurus/`,
             remarkPlugins: [
-              remarkPlugins.commandLineHighlight2,
+              [remarkPlugins.commandLineHighlight2, {debug: true}],
               remarkPlugins.autoLink,
             ],
           },
