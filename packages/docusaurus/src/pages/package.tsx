@@ -489,7 +489,7 @@ function LoadingPage() {
       <Layout title={`Package loading...`}>
         <DocsSidebarProvider name={`foo`} items={[]}>
           <DocRootLayout>
-            Loading in progress
+            <span aria-busy>Loading in progress</span>
           </DocRootLayout>
         </DocsSidebarProvider>
       </Layout>
