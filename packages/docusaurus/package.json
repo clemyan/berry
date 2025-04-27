@@ -77,6 +77,7 @@
     "@docusaurus/module-type-aliases": "^3.7.0",
     "@docusaurus/tsconfig": "^3.7.0",
     "@docusaurus/types": "^3.7.0",
+    "@playwright/test": "^1.52.0",
     "@types/dompurify": "^3",
     "@types/git-url-parse": "^9.0.0",
     "@types/lodash": "^4.14.136",
