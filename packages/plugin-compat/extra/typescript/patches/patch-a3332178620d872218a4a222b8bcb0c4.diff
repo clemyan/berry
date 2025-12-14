@@ -7,7 +7,7 @@ semver exclusivity >=5.7.1-rc
        }
      }
      function isFileSystemCaseSensitive() {
-+      if (typeof process.versions.pnp !== `undefined`) {
++      if (typeof process.versions.pnp !== `undefined `) {
 +        return true;
 +      }
        if (platform === "win32" || platform === "win64") {
